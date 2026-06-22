@@ -110,6 +110,8 @@ The MetaMask deployment wizard saved the local manifests here:
 
 - `deployments/arbitrum.latest.json`
 - `deployments/xpnt-staking-arbitrum.latest.json`
+- Current local capture path on the deployment workstation:
+  `C:\Work\DeepSession\deepsession-staking-contracts\deployments\`
 - Committed markdown snapshot:
   [ARBITRUM_STAKING_PRODUCTION_MANIFEST.md](./ARBITRUM_STAKING_PRODUCTION_MANIFEST.md)
 
@@ -119,6 +121,8 @@ records.
 
 ## Post-Deployment Notes
 
+- Subscription contracts were intentionally not deployed in this production
+  staking run.
 - `ServiceNodeRewards.isStarted` is currently `false`.
 - `ServiceNodeRewards.totalNodes` is currently `0`.
 - Choose the production bootstrap flow before onboarding nodes:

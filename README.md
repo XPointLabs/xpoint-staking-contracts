@@ -37,6 +37,9 @@ Canonical Arbitrum One addresses:
 | RewardRatePool proxy | `0xEd894fb5f0BA3b141A562190D4c9941FEd348356` |
 | Staking requirement | `25,000 XPNT` (`25000000000000` atomic) |
 | Reward pool initial deposit | `40,000,000 XPNT` |
+| Owner / deployer | `0x62174f6e6a25E7D8135Bd172C1053D7ABd7D2750` |
+| ServiceNodeRewards started after deploy | `false` |
+| Subscription contracts deployed | `false` |
 
 The core of the codebase is split
 into two components: the existing C++ codebase, which handles various service

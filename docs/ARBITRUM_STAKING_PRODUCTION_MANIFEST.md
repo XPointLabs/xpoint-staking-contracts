@@ -4,7 +4,14 @@ This file preserves the production staking deployment manifest in markdown so
 the deployment record is not lost if the ignored local `deployments/*.json`
 files are cleaned up.
 
-Source manifest at capture time: `deployments/arbitrum.latest.json`
+Source manifests at capture time:
+
+- `deployments/arbitrum.latest.json`
+- `deployments/xpnt-staking-arbitrum.latest.json`
+
+The JSON files are local deployment artifacts and are ignored by git. On the
+deployment workstation they were last observed under
+`C:\Work\DeepSession\deepsession-staking-contracts\deployments\`.
 
 Captured on: `2026-06-22`
 
@@ -42,6 +49,15 @@ Captured on: `2026-06-22`
 | Pool share of liquidation ratio | `17` |
 | Recipient ratio | `9980` |
 | Mainnet mode | `true` |
+
+## Post-Deploy State
+
+| Field | Value |
+| --- | --- |
+| ServiceNodeRewards started | `false` |
+| ServiceNodeRewards total nodes | `0` |
+| ServiceNodeRewards next service node ID | `1` |
+| Subscription contracts deployed | `false` |
 
 ## Contracts
 
