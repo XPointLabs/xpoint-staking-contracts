@@ -1,0 +1,75 @@
+name: C++ Tests
+on:
+  - push
+  - pull_request
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: 'pnpm'
+          node-version: '22.2.0'
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - uses: actions/cache@v4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Compile contracts
+        run: pnpm build
+
+      - name: Install prerequisites for C++ build
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential libssl-dev libcurl4-openssl-dev libgmp-dev ninja-build pkg-config
+
+      - name: Start Hardhat node in background
+        run: |
+          pnpm hardhat-node &
+          echo "NODE_PID=$!" >> $GITHUB_ENV
+
+      - name: Deploy contracts to local node
+        run: pnpm deploy-local
+
+      - name: Export local deployment addresses
+        run: |
+          SERVICE_NODE_REWARDS_ADDRESS=$(node -p "require('./deployments/localhost.latest.json').contracts.serviceNodeRewards")
+          echo "SERVICE_NODE_REWARDS_ADDRESS=$SERVICE_NODE_REWARDS_ADDRESS" >> "$GITHUB_ENV"
+
+      - name: CMake Generate
+        run: cmake -B ./test/cpp/build -S ./test/cpp -G Ninja
+
+      - name: Compile
+        run: cmake --build ./test/cpp/build --parallel --verbose
+
+      - name: Run C++ tests
+        working-directory: ./test/cpp/build
+        run: ctest -VV --repeat until-pass:2 --test-dir .
+
+      - name: Kill pnpm node
+        run: kill $NODE_PID
+        if: always()
+

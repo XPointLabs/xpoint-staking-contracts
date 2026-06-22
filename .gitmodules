@@ -1,0 +1,9 @@
+[submodule "test/cpp/external/Catch2"]
+       path = test/cpp/external/Catch2
+       url = https://github.com/catchorg/Catch2
+[submodule "test/cpp/external/ethyl"]
+       path = test/cpp/external/ethyl
+       url = https://github.com/session-foundation/ethyl.git
+[submodule "test/cpp/external/bls"]
+       path = test/cpp/external/bls
+       url = https://github.com/session-foundation/bls.git

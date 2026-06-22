@@ -1,0 +1,22 @@
+node_modules
+.tools
+.tmp
+.env
+coverage
+coverage.json
+typechain
+typechain-types
+
+# Hardhat files
+cache
+artifacts
+
+# echidna
+crytic-export
+
+deployments
+
+investors.csv
+scripts/__pycache__/
+*.pyc
+metamask-deploy-staking-mainnet.*.log

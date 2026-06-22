@@ -1,0 +1,48 @@
+name: Local Devnet Integration
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  devnet:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          node-version: '22.2.0'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compile contracts
+        run: pnpm build
+
+      - name: Start local Hardhat devnet
+        run: |
+          pnpm hardhat-node &
+          echo "NODE_PID=$!" >> "$GITHUB_ENV"
+          sleep 5
+
+      - name: Deploy XPNT local devnet staking stack
+        run: pnpm deploy-local-devnet
+
+      - name: Run XPNT local devnet smoke
+        run: pnpm devnet-smoke
+
+      - name: Export ABIs
+        run: pnpm export-abis
+
+      - name: Stop local Hardhat devnet
+        if: always()
+        run: kill "$NODE_PID"
