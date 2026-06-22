@@ -17,6 +17,27 @@ token:
 - Positioning: a private decentralized network where XPoint is the unit of
   access and contribution.
 
+## Production Deployment Record
+
+The production staking stack is deployed on Arbitrum One for the existing XPNT
+token. The ignored local JSON manifests were copied into committed markdown so
+the deployment record survives workspace cleanup:
+
+- Full deployment runbook: [`docs/ARBITRUM_STAKING_PRODUCTION_DEPLOYMENT.md`](docs/ARBITRUM_STAKING_PRODUCTION_DEPLOYMENT.md)
+- Raw manifest snapshot: [`docs/ARBITRUM_STAKING_PRODUCTION_MANIFEST.md`](docs/ARBITRUM_STAKING_PRODUCTION_MANIFEST.md)
+- Mainnet launch runbook: [`docs/XPNT_MAINNET_LAUNCH_RUNBOOK.md`](docs/XPNT_MAINNET_LAUNCH_RUNBOOK.md)
+
+Canonical Arbitrum One addresses:
+
+| Item | Address / Value |
+| --- | --- |
+| XPNT token | `0x63B2cdb8B0d8774F1Fdca91D24803698582a079F` |
+| ServiceNodeRewards proxy | `0xc52284b7aBAebbEF7BdE0E1ca8251B44AeA12F5f` |
+| ServiceNodeContributionFactory proxy | `0x289d88A8C06881634Fb619Ec528361C7b88521f1` |
+| RewardRatePool proxy | `0xEd894fb5f0BA3b141A562190D4c9941FEd348356` |
+| Staking requirement | `25,000 XPNT` (`25000000000000` atomic) |
+| Reward pool initial deposit | `40,000,000 XPNT` |
+
 The core of the codebase is split
 into two components: the existing C++ codebase, which handles various service
 node responsibilities like uptime tracking, reward calculations, and other
