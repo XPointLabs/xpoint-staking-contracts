@@ -4,6 +4,10 @@ This document records the production staking stack deployed for XPNT on Arbitrum
 One. The local deployment manifests are intentionally not the only source of
 truth because the `deployments/` directory is ignored by git.
 
+Reward emission V2 was deployed and verified on 2026-06-29. See
+[REWARD_EMISSION_V2.md](./REWARD_EMISSION_V2.md) for the economic model, UAT
+evidence, and upgrade checks.
+
 ## Deployment Summary
 
 - Deployment timestamp (UTC): `2026-06-22T10:06:58.516Z`
@@ -29,9 +33,9 @@ truth because the `deployments/` directory is ignored by git.
 | Contract | Kind | Address |
 | --- | --- | --- |
 | XPNT | Existing Arbitrum One token | `0x63B2cdb8B0d8774F1Fdca91D24803698582a079F` |
-| RewardRatePool | Implementation | `0x6fc2A62B8a3A24E531F66A678FF2f0BEc86Ca5B5` |
+| RewardRatePool | Current V2 implementation | `0xCcAA274Ff11Da34ffcc232E0741F4234533e238F` |
 | RewardRatePool | Transparent proxy | `0xEd894fb5f0BA3b141A562190D4c9941FEd348356` |
-| ServiceNodeRewards | Implementation | `0x12EB6963deA94CC253136854DbbEFC9E7464118f` |
+| ServiceNodeRewards | Current V2 implementation | `0x5D006b3d22d063C63A0257E077fd0517E1290b84` |
 | ServiceNodeRewards | Transparent proxy | `0xc52284b7aBAebbEF7BdE0E1ca8251B44AeA12F5f` |
 | ServiceNodeContribution | Implementation | `0xd6af6Beb0d19396932e25429aF1828798a68c3EE` |
 | ServiceNodeContributionFactory | Implementation | `0x98Fc499C1d09e4263379c017c97f48e2187FB868` |
@@ -63,6 +67,20 @@ three ProxyAdmins are currently owned by the deployer / owner wallet:
 | Set RewardRatePool beneficiary to ServiceNodeRewards | `476121556` | `0x0a1aabbd58311c1bf8c3460482dc2b1f51ab7b17a74bd76d83158a82e6642a3d` |
 | Approve 40,000,000 XPNT for RewardRatePool | `476121608` | `0x0752f2e20a226c3e122d26dafeceb413679ccf44111c7f3b231391625c27f89a` |
 | Deposit 40,000,000 XPNT into RewardRatePool | `476121728` | `0x39d1b7cc81f3a1acaa7a5921c86522848ecafe355bab1250f632301a19a37ea1` |
+
+## Reward Emission V2 Upgrade
+
+| Step | Transaction |
+| --- | --- |
+| Deploy ServiceNodeRewards V2 implementation | `0x7f144d889ef614692af694da438cf990622b1ef48c64fbffb0e2142e701b9371` |
+| Deploy RewardRatePool V2 implementation | `0xb3eb24a03c4007bc59a954d88d14f4c238caf37dca742a9e637c6262388300b3` |
+| Upgrade and initialize ServiceNodeRewards V2 | `0xd642c7216138a2e565d0653307870181167138b0baa2e993ec6ad19bcfab32c0` |
+| Checkpoint legacy reward accrual | `0x23d03e480c710eb75805fb238f62063417f992671ee34c1f5283051796d885e1` |
+| Upgrade and initialize RewardRatePool V2 | `0x3fdd8324fa03a50ed1a16243619a5e2af1b7210066cb9da1318e9f30a8a609c8` |
+
+The owner-signed postflight verified versions `2 / 2`, exact active stake `0`,
+annual emission `0`, reward rate `0`, and the expected V2 implementation
+addresses. Production proxies and ProxyAdmins did not change.
 
 ## On-Chain Verification Snapshot
 
@@ -123,12 +141,13 @@ records.
 
 - Subscription contracts were intentionally not deployed in this production
   staking run.
-- `ServiceNodeRewards.isStarted` is currently `false`.
-- `ServiceNodeRewards.totalNodes` is currently `0`.
-- Choose the production bootstrap flow before onboarding nodes:
-  - For an owner-seeded initial set, call `seedPublicKeyList(...)` while
-    `ServiceNodeRewards.isStarted == false`, then call `ServiceNodeRewards.start()`.
-  - For manual staking portal registrations, call `ServiceNodeRewards.start()`
-    first; `addBLSPublicKey(...)` is guarded by `whenStarted`.
+- `ServiceNodeRewards.isStarted` is `true` as of block `478785456`, transaction
+  `0xcfea70741ebf1784f2d7dc0c45b41cd2b7882d4feec196e05d62c81d82c1291e`.
+- The first production node registered after start. The latest verification
+  observed `totalNodes = 1` and exact active stake `25,000 XPNT`.
+- Production now uses direct staking registration through
+  `addBLSPublicKey(...)`; owner seeding is no longer available after start.
 - Long-term operations should decide whether the three staking ProxyAdmins stay
   on the deployer EOA or move to a Safe/multisig.
+- `pnpm prepare:start-production` remains the reproducible owner-wallet tool;
+  its preflight now blocks because the contract is already started.

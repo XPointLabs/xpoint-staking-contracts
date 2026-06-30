@@ -94,6 +94,8 @@ async function deployContracts(args = {}, verify = true) {
         9980                               // recipient ratio
     ]);
     await serviceNodeRewards.waitForDeployment();
+    await (await serviceNodeRewards.initializeV2()).wait();
+    await (await rewardRatePool.initializeV2(await serviceNodeRewards.getAddress())).wait();
 
     snContributionImplementationFactory = await ethers.getContractFactory("ServiceNodeContribution");
     snContributionImplementation        = await snContributionImplementationFactory.deploy();
@@ -241,6 +243,8 @@ async function deployContracts(args = {}, verify = true) {
             liquidatorRewardRatio: 3,
             poolShareOfLiquidationRatio: 17,
             recipientRatio: 9980,
+            poolAnnualEmissionRateTenthsPercent: 140,
+            activeStakeAnnualEmissionRateTenthsPercent: 300,
             localDevnet: local_devnet,
             mainnet,
         },

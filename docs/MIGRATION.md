@@ -15,6 +15,10 @@ Arbitrum One staking deployment record.
 - Genesis supply: 240,000,000 XPNT
 - Reward pool seed used by deploy scripts: 40,000,000 XPNT
 - Default staking requirement: 25,000 XPNT
+- Reward emission V2: `min(14% * remaining reward pool, 30% * active staked XPNT)` annualized
+
+UAT evidence and the production wallet-signing procedure are recorded in
+`docs/REWARD_EMISSION_V2.md`.
 
 ## Address Map
 
@@ -46,6 +50,11 @@ variables.
 - 2026-06-22, ServiceNodeContributionFactory proxy: `0x289d88A8C06881634Fb619Ec528361C7b88521f1`, tx `0x1135c45d47981c447ce890efb8cd4f805866b1ba0d2d0c0108742e4b48f12ef0`.
 - 2026-06-22, RewardRatePool proxy: `0xEd894fb5f0BA3b141A562190D4c9941FEd348356`, tx `0x38499167464c771f622d18bf1c1b13c9fc9dc59c6b44405b7715b1cc701ef7be`.
 - 2026-06-22, RewardRatePool initial deposit: `40,000,000 XPNT`, tx `0x39d1b7cc81f3a1acaa7a5921c86522848ecafe355bab1250f632301a19a37ea1`.
+- 2026-06-29, ServiceNodeRewards upgraded to V2 implementation `0x5D006b3d22d063C63A0257E077fd0517E1290b84`, tx `0xd642c7216138a2e565d0653307870181167138b0baa2e993ec6ad19bcfab32c0`.
+- 2026-06-29, RewardRatePool upgraded to V2 implementation `0xCcAA274Ff11Da34ffcc232E0741F4234533e238F`, tx `0x3fdd8324fa03a50ed1a16243619a5e2af1b7210066cb9da1318e9f30a8a609c8`.
+- 2026-06-29, production V2 postflight passed with zero active stake and zero emission before node registration.
+- 2026-06-30, production ServiceNodeRewards started at block `478785456`, tx `0xcfea70741ebf1784f2d7dc0c45b41cd2b7882d4feec196e05d62c81d82c1291e`.
+- 2026-06-30, first post-start node observed with `25,000 XPNT` active stake and a `7,500 XPNT` annual emission ceiling.
 
 ## Deployment
 

@@ -38,6 +38,11 @@ const eth_mainnet_rpc_url = process.env.ETH_MAINNET_RPC_URL || "";
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   networks: {
+      hardhat: {
+        ...(process.env.PRODUCTION_FORK_RPC_URL
+          ? { forking: { url: process.env.PRODUCTION_FORK_RPC_URL } }
+          : {}),
+      },
       arbitrum: {
          url: arb_mainnet_rpc_url,
          chainId: 42161,

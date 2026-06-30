@@ -460,6 +460,17 @@
     "type": "error"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "caller",
+        "type": "address"
+      }
+    ],
+    "name": "UnauthorizedV2Initializer",
+    "type": "error"
+  },
+  {
     "anonymous": false,
     "inputs": [
       {
@@ -879,6 +890,19 @@
       }
     ],
     "name": "StakingRequirementUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "totalActiveStake",
+        "type": "uint256"
+      }
+    ],
+    "name": "TotalActiveStakeRederived",
     "type": "event"
   },
   {
@@ -1388,6 +1412,13 @@
       }
     ],
     "name": "initialize",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "initializeV2",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1993,6 +2024,19 @@
     "name": "start",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalActiveStake",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {

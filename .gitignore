@@ -20,3 +20,5 @@ investors.csv
 scripts/__pycache__/
 *.pyc
 metamask-deploy-staking-mainnet.*.log
+metamask-upgrade-mainnet*.log
+metamask-start-mainnet*.log

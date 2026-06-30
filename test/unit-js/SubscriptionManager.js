@@ -47,6 +47,9 @@ describe("SubscriptionManager and OpsBudgetEscrow", function () {
 
         const RewardRatePool = await ethers.getContractFactory("RewardRatePool");
         rewardRatePool = await upgrades.deployProxy(RewardRatePool, [rewardBeneficiary.address, await token.getAddress()]);
+        const MockActiveStakeProvider = await ethers.getContractFactory("MockActiveStakeProvider");
+        const activeStakeProvider = await MockActiveStakeProvider.deploy(25_000n * XPNT_UNIT);
+        await rewardRatePool.initializeV2(await activeStakeProvider.getAddress());
 
         const epochZeroTimestamp = await time.latest();
         const OpsBudgetEscrow = await ethers.getContractFactory("OpsBudgetEscrow");

@@ -22,6 +22,9 @@ analyze:
 fuzz:
 	echidna . --contract ServiceNodeContributionEchidnaTest --config echidna-local.config.yml
 
+fuzz-reward:
+	echidna . --contract RewardRatePoolEchidnaTest --config echidna.config.yml
+
 deploy-local:
 	npx hardhat run scripts/deploy-local-test.js --network localhost
 

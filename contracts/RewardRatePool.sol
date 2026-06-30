@@ -5,48 +5,36 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "./interfaces/IActiveStakeProvider.sol";
 
 /**
  * @title Reward Rate Pool Contract
- * @dev Implements reward distribution based on a fixed simple annual payout rate.
+ * @dev Limits annualized emission by both the remaining pool and active stake.
  */
 contract RewardRatePool is Initializable, Ownable2StepUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
-    uint256 public constant VERSION = 1;
+    uint256 public constant VERSION = 2;
+    bytes32 private constant ERC1967_ADMIN_SLOT =
+        0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103;
 
     error NullAddress();
     error ZeroAmount();
+    error UnauthorizedV2Initializer(address caller);
 
     IERC20 public XPNT;
 
     address public beneficiary;
     uint256 public totalPaidOut;
     uint256 public lastPaidOutTime;
-    // The simple annual payout rate used for reward calculations.  This 15.1% value is chosen so
-    // that, with daily payouts computed at this simple rate, the total (compounded) payout over a
-    // year will equal 14% of the amount that was in the pool at the beginning of the year.
-    //
-    // To elaborate where this comes from, with daily payout r (=R/365, that is, the annual payout
-    // divided by 365 days per year), with starting balance P, the payout on day 1 equals:
-    //     rP
-    // leaving P-rP = (1-r)P in the pool, and so the day 2 payout equals:
-    //     r(1-r)P
-    // leaving (1-r)P - r(1-r)P = (1-r)(1-r)P = (1-r)^2 P in the pool.  And so on, so that
-    // after 365 days there will be (1-r)^365 P left in the pool.
-    //
-    // To hit a target of 14% over a year, then, we want to find r to solve:
-    //     (1-r)^{365} P = (1-.14) P
-    // i.e.
-    //     (1-r)^{365} = 0.86
-    // and then we multiply the `r` solution by 365 to get the simple annual rate with daily
-    // payouts.  Rounded to the nearest 10th of a percent, that value equals 0.151, i.e. 15.1%.
-    //
-    // There is, of course, some slight imprecision here from the rounding and because the precise
-    // payout frequency depends on the times between calling this smart contract, but the errors are
-    // expected to be small, keeping this close to the 14% target.
-    uint64 public constant ANNUAL_SIMPLE_PAYOUT_RATE = 151; // 15.1% in tenths of a percent
-    uint64 public constant BASIS_POINTS = 1000; // Basis points for percentage calculation
+
+    // Rates use tenths of a percent to preserve the existing public denominator.
+    uint64 public constant ANNUAL_SIMPLE_PAYOUT_RATE = 140; // 14% of remaining pool
+    uint64 public constant ACTIVE_STAKE_ANNUAL_PAYOUT_RATE = 300; // 30% of active stake
+    uint64 public constant BASIS_POINTS = 1000;
+
+    // Appended in V2 to preserve the V1 proxy storage layout.
+    IActiveStakeProvider public activeStakeProvider;
 
     /**
      * @dev Sets the initial beneficiary and XPNT token address.
@@ -62,27 +50,26 @@ contract RewardRatePool is Initializable, Ownable2StepUpgradeable, ReentrancyGua
         __ReentrancyGuard_init();
     }
 
-    // EVENTS
+    /// @notice Configures the on-chain source of exact active stake during a V1 -> V2 upgrade.
+    function initializeV2(address provider) public reinitializer(2) {
+        _requireOwnerOrProxyAdmin();
+        if (provider == address(0)) revert NullAddress();
+        activeStakeProvider = IActiveStakeProvider(provider);
+        lastPaidOutTime = block.timestamp;
+        emit ActiveStakeProviderUpdated(provider);
+    }
+
     event Deposited(address indexed from, uint256 amount);
     event FundsReleased(uint256 amount);
     event BeneficiaryUpdated(address newBeneficiary);
+    event ActiveStakeProviderUpdated(address newProvider);
 
-    //////////////////////////////////////////////////////////////
-    //                                                          //
-    //                  State-changing functions                //
-    //                                                          //
-    //////////////////////////////////////////////////////////////
-
-    /**
-     * @dev Calculates and releases the due payout to the beneficiary.
-     * Updates the total paid out and the last payout time.
-     */
     function payoutReleased() public nonReentrant {
         _payoutReleased();
     }
 
     /**
-     * @dev Realizes the currently accrued payout before new funds are added.
+     * @dev Realizes the accrued payout before new funds are added.
      * This prevents freshly deposited funds from accruing rewards retroactively.
      */
     function deposit(uint256 amount) public nonReentrant {
@@ -92,9 +79,6 @@ contract RewardRatePool is Initializable, Ownable2StepUpgradeable, ReentrancyGua
         emit Deposited(msg.sender, amount);
     }
 
-    /**
-     * @dev Realizes the accrued payout without requiring the caller to know the released amount.
-     */
     function checkpoint() public nonReentrant {
         _payoutReleased();
     }
@@ -115,53 +99,75 @@ contract RewardRatePool is Initializable, Ownable2StepUpgradeable, ReentrancyGua
         }
     }
 
-    /// @notice Setter function for beneficiary, only callable by owner
-    /// @param newBeneficiary the address the beneficiary is being changed to
     function setBeneficiary(address newBeneficiary) public onlyOwner {
+        if (newBeneficiary == address(0)) revert NullAddress();
         beneficiary = newBeneficiary;
         emit BeneficiaryUpdated(newBeneficiary);
     }
 
-    //////////////////////////////////////////////////////////////
-    //                                                          //
-    //                Non-state-changing functions              //
-    //                                                          //
-    //////////////////////////////////////////////////////////////
-
-    /**
-     * @dev Returns the current 2-minute block reward.
-     * @return The calculated block reward.
-     */
-    function rewardRate() public view returns (uint256) {
-        uint256 alreadyReleased = calculateReleasedAmount();
-        uint256 totalDeposited = calculateTotalDeposited();
-        return calculatePayoutAmount(totalDeposited - alreadyReleased, 2 minutes);
+    /// @notice Changes the active-stake source after checkpointing under the old source.
+    function setActiveStakeProvider(address newProvider) public onlyOwner nonReentrant {
+        if (newProvider == address(0)) revert NullAddress();
+        _payoutReleased();
+        activeStakeProvider = IActiveStakeProvider(newProvider);
+        emit ActiveStakeProviderUpdated(newProvider);
     }
 
-    /**
-     * @dev Calculates the total amount of XPNT tokens deposited in the contract.
-     * @return The sum of XPNT tokens currently held by the contract and the total amount previously paid out.
-     */
+    /// @notice Returns the current two-minute reward consumed by reward accrual services.
+    function rewardRate() public view returns (uint256) {
+        return calculateCappedPayoutAmount(XPNT.balanceOf(address(this)), activeStake(), 2 minutes);
+    }
+
     function calculateTotalDeposited() public view returns (uint256) {
         return XPNT.balanceOf(address(this)) + totalPaidOut;
     }
 
-    /**
-     * @dev Calculates the amount of XPNT tokens released up to the current time.
-     * @return The calculated amount of XPNT tokens released.
-     */
     function calculateReleasedAmount() public view returns (uint256) {
         uint256 timeElapsed = block.timestamp - lastPaidOutTime;
-        return totalPaidOut + calculatePayoutAmount(XPNT.balanceOf(address(this)), timeElapsed);
+        return totalPaidOut + calculateCappedPayoutAmount(
+            XPNT.balanceOf(address(this)),
+            activeStake(),
+            timeElapsed
+        );
     }
 
-    /**
-     * @dev Calculates payout amount for a given balance and time period.
-     * @param balance The principal balance to calculate payout from.
-     * @param timeElapsed The time period over which to calculate payout.
-     * @return The calculated payout amount.
-     */
+    /// @notice Returns the exact amount currently staked by active service nodes.
+    function activeStake() public view returns (uint256) {
+        if (address(activeStakeProvider) == address(0)) return 0;
+        return activeStakeProvider.totalActiveStake();
+    }
+
+    /// @notice Returns the current annualized emission ceiling.
+    function annualEmission() public view returns (uint256) {
+        return calculateCappedPayoutAmount(XPNT.balanceOf(address(this)), activeStake(), 365 days);
+    }
+
+    /// @notice Calculates the 14% pool-balance ceiling, prorated by time.
     function calculatePayoutAmount(uint256 balance, uint256 timeElapsed) public pure returns (uint256) {
         return (balance * ANNUAL_SIMPLE_PAYOUT_RATE * timeElapsed) / (BASIS_POINTS * 365 days);
+    }
+
+    /// @notice Calculates min(14% of pool, 30% of active stake), prorated by time.
+    function calculateCappedPayoutAmount(
+        uint256 balance,
+        uint256 activeStakeAmount,
+        uint256 timeElapsed
+    ) public pure returns (uint256) {
+        uint256 poolPayout = calculatePayoutAmount(balance, timeElapsed);
+        uint256 stakePayout = (
+            activeStakeAmount * ACTIVE_STAKE_ANNUAL_PAYOUT_RATE * timeElapsed
+        ) / (BASIS_POINTS * 365 days);
+        return poolPayout < stakePayout ? poolPayout : stakePayout;
+    }
+
+    function _requireOwnerOrProxyAdmin() private view {
+        address proxyAdmin;
+        bytes32 slot = ERC1967_ADMIN_SLOT;
+        assembly {
+            proxyAdmin := sload(slot)
+        }
+        if (msg.sender != owner() && msg.sender != proxyAdmin) {
+            revert UnauthorizedV2Initializer(msg.sender);
+        }
     }
 }

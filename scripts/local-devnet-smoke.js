@@ -19,14 +19,15 @@ async function main() {
   await assertEqual(await token.symbol(), "XPNT", "token symbol");
   await assertEqual(await token.decimals(), 9n, "token decimals");
   await assertEqual(await rewards.designatedToken(), deployment.contracts.token, "designated token");
-  await assertEqual(await rewardPool.ANNUAL_SIMPLE_PAYOUT_RATE(), 151n, "annual simple payout rate");
+  await assertEqual(await rewardPool.ANNUAL_SIMPLE_PAYOUT_RATE(), 140n, "pool annual payout rate");
+  await assertEqual(await rewardPool.ACTIVE_STAKE_ANNUAL_PAYOUT_RATE(), 300n, "active stake annual payout rate");
   await assertEqual(await rewardPool.BASIS_POINTS(), 1000n, "reward pool basis points");
+  await assertEqual(await rewardPool.activeStakeProvider(), deployment.contracts.serviceNodeRewards, "active stake provider");
 
   const stakingRequirement = await rewards.stakingRequirement();
   const seed = [{
     blsPubkey: {
-      X: "0x12c59fb45c483177873406e5b74a2e6914fe25a591185f30d2788e737da6f2ed",
-      Y: "0x016e56f330d11faaf90ec281b1c4184e98a52d4043075fcbe45a976de0f795ab",
+      data: "0x0000000000000000000000000000000014ea54b24c3dae4c5d072e75299096f9c3d4c6902112bdb45ef18281bfc4143b240662d454316092acebafdc7fb427cb0000000000000000000000000000000013b8723cc024f36fec399ced021d647a9c3ecaf5ddb6b4bdb0e0a851f6280b22163912ade7128db8a5266490fd682f15",
     },
     ed25519Pubkey: 1n,
     addedTimestamp: Math.floor(Date.now() / 1000),
@@ -41,6 +42,7 @@ async function main() {
 
   await (await rewards.seedPublicKeyList(seed)).wait();
   await assertEqual(await rewards.totalNodes(), 1n, "seeded service node count");
+  await assertEqual(await rewards.totalActiveStake(), stakingRequirement, "seeded active stake");
   await (await rewards.start()).wait();
 
   console.log(JSON.stringify({

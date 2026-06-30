@@ -320,6 +320,8 @@ const page = String.raw`<!doctype html>
       ["serviceNodeContributionImplementation", "Deploy ServiceNodeContribution implementation"],
       ["serviceNodeContributionFactoryImplementation", "Deploy ServiceNodeContributionFactory implementation"],
       ["serviceNodeContributionFactory", "Deploy ServiceNodeContributionFactory proxy"],
+      ["initializeServiceNodeRewardsV2", "Initialize ServiceNodeRewards V2 state"],
+      ["initializeRewardRatePoolV2", "Connect RewardRatePool to active stake"],
       ["setRewardPoolBeneficiary", "Set RewardRatePool beneficiary to ServiceNodeRewards"],
       ["approveRewardPoolDeposit", "Approve 40,000,000 XPNT for RewardRatePool"],
       ["depositRewardPool", "Deposit 40,000,000 XPNT into RewardRatePool"],
@@ -519,6 +521,8 @@ const page = String.raw`<!doctype html>
             state.deployments.serviceNodeContributionFactoryImplementation
           ),
           serviceNodeContributionFactory: txRecord("serviceNodeContributionFactory", state.deployments.serviceNodeContributionFactory),
+          initializeServiceNodeRewardsV2: txRecord("initializeServiceNodeRewardsV2"),
+          initializeRewardRatePoolV2: txRecord("initializeRewardRatePoolV2"),
           setRewardPoolBeneficiary: txRecord("setRewardPoolBeneficiary"),
           approveRewardPoolDeposit: txRecord("approveRewardPoolDeposit"),
           depositRewardPool: txRecord("depositRewardPool"),
@@ -546,6 +550,8 @@ const page = String.raw`<!doctype html>
           liquidatorRewardRatio: c.liquidatorRewardRatio,
           poolShareOfLiquidationRatio: c.poolShareOfLiquidationRatio,
           recipientRatio: c.recipientRatio,
+          poolAnnualEmissionRateTenthsPercent: 140,
+          activeStakeAnnualEmissionRateTenthsPercent: 300,
           mainnet: true,
           subscriptionContractsDeployed: false,
         },
@@ -670,6 +676,13 @@ const page = String.raw`<!doctype html>
         );
 
         const rewardPool = new ethers.Contract(rewardPoolProxy, state.bundle.artifacts.RewardRatePool.abi, state.signer);
+        const serviceNodeRewards = new ethers.Contract(
+          serviceNodeRewardsProxy,
+          state.bundle.artifacts.ServiceNodeRewards.abi,
+          state.signer
+        );
+        await sendTx("initializeServiceNodeRewardsV2", serviceNodeRewards.initializeV2());
+        await sendTx("initializeRewardRatePoolV2", rewardPool.initializeV2(serviceNodeRewardsProxy));
         await sendTx("setRewardPoolBeneficiary", rewardPool.setBeneficiary(serviceNodeRewardsProxy));
 
         const allowance = await token.allowance(state.account, rewardPoolProxy);

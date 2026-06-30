@@ -3,4 +3,5 @@ pragma solidity ^0.8.26;
 
 interface IRewardPoolDeposit {
     function deposit(uint256 amount) external;
+    function checkpoint() external;
 }

@@ -110,11 +110,17 @@ the staking deployment completed.
 - RewardRatePool proxy: `0xEd894fb5f0BA3b141A562190D4c9941FEd348356`
 - Staking requirement: `25,000 XPNT`
 - Staking requirement, atomic: `25000000000000`
-- Reward pool balance: `40,000,000 XPNT`
+- Reward pool balance after the V1 checkpoint: `39,878,487.519025876 XPNT`
 - Max contributors per node: `10`
 - Liquidation ratios: `3 / 17 / 9980`
-- `ServiceNodeRewards.isStarted`: `false`
-- `ServiceNodeRewards.totalNodes`: `0`
+- `ServiceNodeRewards.isStarted`: `true` at block `478785456`.
+- Production registration start tx:
+  `0xcfea70741ebf1784f2d7dc0c45b41cd2b7882d4feec196e05d62c81d82c1291e`.
+- The first production node was observed after start, confirming that direct
+  registration is active.
+- `ServiceNodeRewards.totalNodes`: `1` at the latest post-start verification.
+- Exact active stake: `25,000 XPNT`; current annual emission ceiling:
+  `7,500 XPNT`.
 - Full deployment record: [ARBITRUM_STAKING_PRODUCTION_DEPLOYMENT.md](./ARBITRUM_STAKING_PRODUCTION_DEPLOYMENT.md)
 
 ## Deployment and Verification Record

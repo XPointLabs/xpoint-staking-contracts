@@ -26,6 +26,7 @@ the deployment record survives workspace cleanup:
 - Full deployment runbook: [`docs/ARBITRUM_STAKING_PRODUCTION_DEPLOYMENT.md`](docs/ARBITRUM_STAKING_PRODUCTION_DEPLOYMENT.md)
 - Raw manifest snapshot: [`docs/ARBITRUM_STAKING_PRODUCTION_MANIFEST.md`](docs/ARBITRUM_STAKING_PRODUCTION_MANIFEST.md)
 - Mainnet launch runbook: [`docs/XPNT_MAINNET_LAUNCH_RUNBOOK.md`](docs/XPNT_MAINNET_LAUNCH_RUNBOOK.md)
+- Reward emission V2 model, UAT evidence, and production procedure: [`docs/REWARD_EMISSION_V2.md`](docs/REWARD_EMISSION_V2.md)
 
 Canonical Arbitrum One addresses:
 
@@ -56,6 +57,11 @@ contract is its use of BLS signatures. This technology enables the aggregation
 of multiple signatures into a single, verifiable entity, ensuring that rewards
 are distributed only when a consensus (e.g., 95% agreement within the network)
 is achieved regarding the amount to be claimed.
+
+Reward emission is capped by both network capacity and the remaining pool:
+`min(14% * remaining Reward Pool, 30% * active staked XPNT)` annualized. Exact
+active stake is maintained on-chain and all stake transitions checkpoint the
+previous emission state first.
 
 ## Building and Tests
 

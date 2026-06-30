@@ -86,6 +86,7 @@ interface IServiceNodeRewards {
     function serviceNodeIDs(bytes memory) external view returns (uint64);
     function allServiceNodeIDs() external view returns (uint64[] memory ids, BLS12381.G1Point[] memory pubkeys);
     function stakingRequirement() external view returns (uint256);
+    function totalActiveStake() external view returns (uint256);
     function totalNodes() external view returns (uint256);
 
     // Function Signatures

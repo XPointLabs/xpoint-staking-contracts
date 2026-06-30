@@ -2,149 +2,166 @@ const { expect } = require("chai");
 const { ethers, upgrades } = require("hardhat");
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
-const STAKING_TEST_AMNT = 15000000000000
+const XPNT_UNIT = 1_000_000_000n;
+const YEAR = 365n * 24n * 60n * 60n;
+const POOL_BALANCE = 40_000_000n * XPNT_UNIT;
+const STAKING_REQUIREMENT = 25_000n * XPNT_UNIT;
 
-describe("RewardRatePool Contract Tests", function () {
-    let MockERC20;
-    let mockERC20;
-    let ServiceNodeRewards;
-    let serviceNodeRewards;
-    let RewardRatePool;
+describe("RewardRatePool capped emission", function () {
+    let owner;
+    let beneficiary;
+    let token;
+    let stakeProvider;
     let rewardRatePool;
-    const principal = 100000;
-    const bigAtomicPrincipal = ethers.parseUnits(principal.toString(), 9);
-    const seconds_in_day = 24*60*60;
-    const seconds_in_year = 365 * seconds_in_day;
-    const seconds_in_2_minutes = 2*60;
-
-    async function depositToPool(amount) {
-        await mockERC20.approve(await rewardRatePool.getAddress(), amount);
-        await rewardRatePool.deposit(amount);
-    }
 
     beforeEach(async function () {
-        // Deploy a mock ERC20 token
-        try {
-            // Deploy a mock ERC20 token
-            MockERC20 = await ethers.getContractFactory("MockERC20");
-            mockERC20 = await MockERC20.deploy("XPoint", "XPNT", 240_000_000n * 1_000_000_000n);
-        } catch (error) {
-            console.error("Error deploying MockERC20:", error);
+        [owner, beneficiary] = await ethers.getSigners();
+
+        const MockERC20 = await ethers.getContractFactory("MockERC20");
+        token = await MockERC20.deploy("XPoint", "XPNT", 240_000_000n * XPNT_UNIT);
+
+        const MockActiveStakeProvider = await ethers.getContractFactory("MockActiveStakeProvider");
+        stakeProvider = await MockActiveStakeProvider.deploy(0);
+
+        const RewardRatePool = await ethers.getContractFactory("RewardRatePool");
+        rewardRatePool = await upgrades.deployProxy(
+            RewardRatePool,
+            [beneficiary.address, await token.getAddress()],
+        );
+        await rewardRatePool.initializeV2(await stakeProvider.getAddress());
+
+        await token.approve(await rewardRatePool.getAddress(), POOL_BALANCE);
+        await rewardRatePool.deposit(POOL_BALANCE);
+    });
+
+    it("uses the approved pool and active-stake annual caps", async function () {
+        expect(await rewardRatePool.VERSION()).to.equal(2);
+        expect(await rewardRatePool.ANNUAL_SIMPLE_PAYOUT_RATE()).to.equal(140);
+        expect(await rewardRatePool.ACTIVE_STAKE_ANNUAL_PAYOUT_RATE()).to.equal(300);
+        expect(await rewardRatePool.BASIS_POINTS()).to.equal(1000);
+        expect(await rewardRatePool.activeStakeProvider()).to.equal(await stakeProvider.getAddress());
+    });
+
+    it("initializes V2 atomically through the ERC-1967 proxy admin", async function () {
+        const [, , attacker] = await ethers.getSigners();
+        const RewardRatePool = await ethers.getContractFactory("RewardRatePool");
+        const v1StateProxy = await upgrades.deployProxy(
+            RewardRatePool,
+            [beneficiary.address, await token.getAddress()],
+        );
+
+        await expect(v1StateProxy.connect(attacker).initializeV2(await stakeProvider.getAddress()))
+            .to.be.revertedWithCustomError(v1StateProxy, "UnauthorizedV2Initializer")
+            .withArgs(attacker.address);
+
+        const upgraded = await upgrades.upgradeProxy(
+            await v1StateProxy.getAddress(),
+            RewardRatePool,
+            { call: { fn: "initializeV2", args: [await stakeProvider.getAddress()] } },
+        );
+        expect(await upgraded.activeStakeProvider()).to.equal(await stakeProvider.getAddress());
+    });
+
+    it("matches the approved early-network emission examples", async function () {
+        const examples = [
+            [3n, 22_500n],
+            [100n, 750_000n],
+            [500n, 3_750_000n],
+            [748n, 5_600_000n],
+        ];
+
+        for (const [nodes, annualXpnt] of examples) {
+            await stakeProvider.setTotalActiveStake(nodes * STAKING_REQUIREMENT);
+            expect(await rewardRatePool.annualEmission()).to.equal(annualXpnt * XPNT_UNIT);
         }
-
-        ServiceNodeRewards = await ethers.getContractFactory("MockServiceNodeRewards");
-        serviceNodeRewards = await ServiceNodeRewards.deploy(mockERC20, STAKING_TEST_AMNT);
-
-        // NOTE: Set the serviceNodeRewards contract as the recipient of rewards
-        RewardRatePool = await ethers.getContractFactory("RewardRatePool");
-        rewardRatePool = await upgrades.deployProxy(RewardRatePool, [await serviceNodeRewards.getAddress(), await mockERC20.getAddress()]);
     });
 
-    it("Should have the correct payout rate", async function () {
-        await expect(await rewardRatePool.ANNUAL_SIMPLE_PAYOUT_RATE())
-            .to.equal(151);
-    });
-
-    it("should calculate 15.1% payout correctly", async function () {
-        await expect(await rewardRatePool.calculatePayoutAmount(principal, seconds_in_year))
-            .to.equal((principal * 0.151).toFixed(0));
-    });
-
-    it("should calculate 15.1% released correctly", async function () {
-        await time.setNextBlockTimestamp(await time.latest() + 42)
-        await depositToPool(bigAtomicPrincipal);
-        await expect(await rewardRatePool.calculateReleasedAmount())
-            // Newly deposited funds only start accruing from the checkpointed deposit time.
-            .to.equal(0);
-    });
-
-    it("should calculate reward rate", async function () {
-        await time.setNextBlockTimestamp(await time.latest() + 1)
-        await depositToPool(bigAtomicPrincipal);
-        const expectedRate = await rewardRatePool.calculatePayoutAmount(bigAtomicPrincipal, BigInt(seconds_in_2_minutes));
-        await expect(await rewardRatePool.rewardRate())
-            .to.equal(expectedRate);
-    });
-
-    it("should should be ~14.017% with daily withdrawals", async function () {
-        await depositToPool(bigAtomicPrincipal);
-        let t = await rewardRatePool.lastPaidOutTime();
-        let total_paid = 0;
-        for (let i = 0; i < 365; i++) {
-            t += BigInt(seconds_in_day);
-            await time.setNextBlockTimestamp(t);
-            await rewardRatePool.payoutReleased();
-        }
-        await expect(await rewardRatePool.calculateReleasedAmount())
-            .to.equal(bigAtomicPrincipal * BigInt("14017916502388") / BigInt("100000000000000"));
-    });
-
-    it("should should be ~14.098% with monthly withdrawals", async function () {
-        await depositToPool(bigAtomicPrincipal);
-        let t = await rewardRatePool.lastPaidOutTime();
-        let total_paid = 0;
-        for (let i = 0; i < 12; i++) {
-            t += BigInt(seconds_in_year / 12);
-            await time.setNextBlockTimestamp(t);
-            await rewardRatePool.payoutReleased();
-        }
-        await expect(await rewardRatePool.calculateReleasedAmount())
-            .to.equal(bigAtomicPrincipal * BigInt("14097571610714") / BigInt("100000000000000"));
-    });
-
-    it("should be able to release funds to the rewards contract", async function () {
-        await depositToPool(bigAtomicPrincipal);
-        expect(await mockERC20.balanceOf(rewardRatePool)).to.equal(bigAtomicPrincipal);
-
-        // NOTE: Advance time and test the payout release
-        let last_paid = await rewardRatePool.lastPaidOutTime();
-        await time.setNextBlockTimestamp(last_paid + BigInt(seconds_in_year));
-        await expect(await rewardRatePool.payoutReleased()).to
-                                                           .emit(rewardRatePool, 'FundsReleased')
-                                                           .withArgs(15100000000000);
-
-        // NOTE: Advance time again and test the payout release
-        last_paid = await rewardRatePool.lastPaidOutTime();
-        await time.setNextBlockTimestamp(last_paid + BigInt(seconds_in_year));
-        await expect(await rewardRatePool.payoutReleased()).to
-                                                           .emit(rewardRatePool, 'FundsReleased')
-                                                           .withArgs(12819900000000); // (10000 - 15.1%) * 15.1%
-    });
-
-    it("checkpoints old accrual before accepting a new deposit", async function () {
-        await depositToPool(bigAtomicPrincipal);
-
+    it("emits nothing while there is no active stake", async function () {
         const lastPaid = await rewardRatePool.lastPaidOutTime();
-        await time.setNextBlockTimestamp(lastPaid + BigInt(seconds_in_year / 2));
+        await time.setNextBlockTimestamp(lastPaid + YEAR);
 
-        await mockERC20.approve(await rewardRatePool.getAddress(), bigAtomicPrincipal);
-        const depositTx = await rewardRatePool.deposit(bigAtomicPrincipal);
-        const receipt = await depositTx.wait();
-        const block = await ethers.provider.getBlock(receipt.blockNumber);
-        const elapsed = BigInt(block.timestamp) - lastPaid;
-        const expectedRelease = await rewardRatePool.calculatePayoutAmount(bigAtomicPrincipal, elapsed);
+        expect(await rewardRatePool.calculateReleasedAmount()).to.equal(0);
+        await expect(rewardRatePool.payoutReleased()).to.emit(rewardRatePool, "FundsReleased").withArgs(0);
+        expect(await token.balanceOf(beneficiary.address)).to.equal(0);
+    });
 
-        await expect(depositTx)
+    it("pays the active-stake cap after one year at three nodes", async function () {
+        await stakeProvider.setTotalActiveStake(3n * STAKING_REQUIREMENT);
+        const lastPaid = await rewardRatePool.lastPaidOutTime();
+        await time.setNextBlockTimestamp(lastPaid + YEAR);
+
+        const expected = 22_500n * XPNT_UNIT;
+        await expect(rewardRatePool.payoutReleased()).to.emit(rewardRatePool, "FundsReleased").withArgs(expected);
+        expect(await token.balanceOf(beneficiary.address)).to.equal(expected);
+    });
+
+    it("pays the 14 percent pool cap once active stake reaches 748 nodes", async function () {
+        await stakeProvider.setTotalActiveStake(748n * STAKING_REQUIREMENT);
+        const lastPaid = await rewardRatePool.lastPaidOutTime();
+        await time.setNextBlockTimestamp(lastPaid + YEAR);
+
+        const expected = 5_600_000n * XPNT_UNIT;
+        await expect(rewardRatePool.payoutReleased()).to.emit(rewardRatePool, "FundsReleased").withArgs(expected);
+        expect(await token.balanceOf(beneficiary.address)).to.equal(expected);
+    });
+
+    it("returns the capped two-minute reward rate consumed by the backend", async function () {
+        await stakeProvider.setTotalActiveStake(100n * STAKING_REQUIREMENT);
+        const annual = 750_000n * XPNT_UNIT;
+        expect(await rewardRatePool.rewardRate()).to.equal((annual * 120n) / YEAR);
+    });
+
+    it("checkpoints the old provider before changing the active-stake source", async function () {
+        await stakeProvider.setTotalActiveStake(3n * STAKING_REQUIREMENT);
+        const lastPaid = await rewardRatePool.lastPaidOutTime();
+
+        const MockActiveStakeProvider = await ethers.getContractFactory("MockActiveStakeProvider");
+        const replacement = await MockActiveStakeProvider.deploy(100n * STAKING_REQUIREMENT);
+        const expectedOldAccrual = (22_500n * XPNT_UNIT) / 2n;
+        await time.setNextBlockTimestamp(lastPaid + YEAR / 2n);
+
+        await expect(rewardRatePool.setActiveStakeProvider(await replacement.getAddress()))
+            .to.emit(rewardRatePool, "FundsReleased")
+            .withArgs(expectedOldAccrual)
+            .and.to.emit(rewardRatePool, "ActiveStakeProviderUpdated")
+            .withArgs(await replacement.getAddress());
+
+        expect(await token.balanceOf(beneficiary.address)).to.equal(expectedOldAccrual);
+        expect(await rewardRatePool.activeStakeProvider()).to.equal(await replacement.getAddress());
+    });
+
+    it("checkpoints accrued emission before accepting a new deposit", async function () {
+        await stakeProvider.setTotalActiveStake(748n * STAKING_REQUIREMENT);
+        const lastPaid = await rewardRatePool.lastPaidOutTime();
+
+        await token.approve(await rewardRatePool.getAddress(), POOL_BALANCE);
+        const expectedRelease = 2_800_000n * XPNT_UNIT;
+        await time.setNextBlockTimestamp(lastPaid + YEAR / 2n);
+        await expect(rewardRatePool.deposit(POOL_BALANCE))
             .to.emit(rewardRatePool, "FundsReleased")
             .withArgs(expectedRelease);
 
-        expect(await mockERC20.balanceOf(await serviceNodeRewards.getAddress())).to.equal(expectedRelease);
-        expect(await mockERC20.balanceOf(rewardRatePool)).to.equal(2n * bigAtomicPrincipal - expectedRelease);
-        expect(await rewardRatePool.totalPaidOut()).to.equal(expectedRelease);
+        expect(await token.balanceOf(beneficiary.address)).to.equal(expectedRelease);
+        expect(await token.balanceOf(await rewardRatePool.getAddress())).to.equal(
+            2n * POOL_BALANCE - expectedRelease,
+        );
     });
 
-    it("caps payout to the available balance after very long inactivity", async function () {
-        await depositToPool(bigAtomicPrincipal);
-
+    it("never releases more than the remaining reward pool", async function () {
+        await stakeProvider.setTotalActiveStake(10_000n * STAKING_REQUIREMENT);
         const lastPaid = await rewardRatePool.lastPaidOutTime();
-        await time.setNextBlockTimestamp(lastPaid + BigInt(seconds_in_year * 7));
+        await time.setNextBlockTimestamp(lastPaid + 8n * YEAR);
 
-        await expect(await rewardRatePool.payoutReleased())
+        await expect(rewardRatePool.payoutReleased())
             .to.emit(rewardRatePool, "FundsReleased")
-            .withArgs(bigAtomicPrincipal);
+            .withArgs(POOL_BALANCE);
+        expect(await token.balanceOf(await rewardRatePool.getAddress())).to.equal(0);
+        expect(await rewardRatePool.totalPaidOut()).to.equal(POOL_BALANCE);
+    });
 
-        expect(await mockERC20.balanceOf(await serviceNodeRewards.getAddress())).to.equal(bigAtomicPrincipal);
-        expect(await mockERC20.balanceOf(rewardRatePool)).to.equal(0n);
-        expect(await rewardRatePool.totalPaidOut()).to.equal(bigAtomicPrincipal);
+    it("exposes pure pool-only and capped payout helpers", async function () {
+        expect(await rewardRatePool.calculatePayoutAmount(100_000n, YEAR)).to.equal(14_000n);
+        expect(await rewardRatePool.calculateCappedPayoutAmount(100_000n, 10_000n, YEAR)).to.equal(3_000n);
+        expect(await rewardRatePool.calculateCappedPayoutAmount(100_000n, 100_000n, YEAR)).to.equal(14_000n);
     });
 });

@@ -16,7 +16,9 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 /// @notice This contract manages the rewards and public keys for service nodes.
 contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableUpgradeable, IServiceNodeRewards {
 
-    uint256 public constant VERSION = 1;
+    uint256 public constant VERSION = 2;
+    bytes32 private constant ERC1967_ADMIN_SLOT =
+        0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103;
 
     using SafeERC20 for IERC20;
 
@@ -109,6 +111,13 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
         __Pausable_init();
     }
 
+    /// @notice Restores V2 active-stake accounting for an existing proxy.
+    function initializeV2() public reinitializer(2) {
+        _requireOwnerOrProxyAdmin();
+        _rederiveTotalsAndAggregatePubkey();
+        emit TotalActiveStakeRederived(totalActiveStake);
+    }
+
     mapping(uint64 => ServiceNode) private _serviceNodes;
     mapping(address => Recipient) public recipients;
     // Maps a bls public key (G1Point) to a serviceNodeID
@@ -159,6 +168,9 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
     // Tracks the node ID that is associated with the Ed25519 public key
     mapping(uint256 ed25519Pubkey => uint64 serviceNodeID) public ed25519ToServiceNodeID;
 
+    // Appended in V2 to preserve the V1 proxy storage layout.
+    uint256 public totalActiveStake;
+
     // EVENTS
     event NewSeededServiceNode(uint64 indexed serviceNodeID, BLS12381.G1Point blsPubkey, uint256 ed25519Pubkey);
     event NewServiceNodeV2(
@@ -184,6 +196,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
     event ServiceNodeExitRequest(uint64 indexed serviceNodeID, address initiator, BLS12381.G1Point pubkey);
     event StakingRequirementUpdated(uint256 newRequirement);
     event SignatureExpiryUpdated(uint256 newExpiry);
+    event TotalActiveStakeRederived(uint256 totalActiveStake);
 
     // ERRORS
     error BLSPubkeyAlreadyExists(uint64 serviceNodeID);
@@ -228,6 +241,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
     error ServiceNodeDoesntExist(uint64 serviceNodeID);
     error SignatureExpired(uint64 serviceNodeID, uint256 timestamp, uint256 currenttime);
     error SmallContributorLeaveTooEarly(uint64 serviceNodeID, address contributor);
+    error UnauthorizedV2Initializer(address caller);
 
     //////////////////////////////////////////////////////////////
     //                                                          //
@@ -422,9 +436,11 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
         address operator = contributors[0].staker.addr;
         _validateProofOfPossession(blsPubkey, blsSignature, operator, serviceNodeParams.serviceNodePubkey);
 
+        _checkpointRewardPool();
         (uint64 allocID, ServiceNode storage sn) = serviceNodeAdd(blsPubkey, serviceNodeParams.serviceNodePubkey);
         sn.deposit                               = stakingRequirement;
         sn.operator                              = operator;
+        totalActiveStake                        += sn.deposit;
         for (uint256 i = 0; i < contributorsLength; ) {
             sn.contributors.push(contributors[i]);
             unchecked { i += 1; }
@@ -571,6 +587,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
     /// @param serviceNodeID The ID of the service node to be exited.
     function _exitBLSPublicKey(uint64 serviceNodeID, uint256 returnedAmount) internal {
         BLS12381.G1Point memory pubkey = _serviceNodes[serviceNodeID].blsPubkey;
+        _checkpointRewardPool();
         serviceNodeDelete(serviceNodeID);
 
         updateBLSNonSignerThreshold();
@@ -691,6 +708,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
             revert ContractAlreadyStarted();
 
         uint256 nodesLength = nodes.length;
+        if (nodesLength > 0) _checkpointRewardPool();
         for (uint256 i = 0; i < nodesLength; ) {
             SeedServiceNode calldata node = nodes[i];
 
@@ -720,6 +738,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
             if (stakedAmountSum != stakingRequirement)
                 revert ContributionTotalMismatch(stakingRequirement, stakedAmountSum);
 
+            totalActiveStake += sn.deposit;
             emit NewSeededServiceNode(allocID, node.blsPubkey, node.ed25519Pubkey);
             unchecked { i += 1; }
         }
@@ -841,6 +860,24 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
         delete _serviceNodes[nodeID];
 
         totalNodes -= 1;
+        totalActiveStake -= node.deposit;
+    }
+
+    function _checkpointRewardPool() internal {
+        address pool = address(foundationPool);
+        if (pool.code.length == 0) return;
+        IRewardPoolDeposit(pool).checkpoint();
+    }
+
+    function _requireOwnerOrProxyAdmin() private view {
+        address proxyAdmin;
+        bytes32 slot = ERC1967_ADMIN_SLOT;
+        assembly {
+            proxyAdmin := sload(slot)
+        }
+        if (msg.sender != owner() && msg.sender != proxyAdmin) {
+            revert UnauthorizedV2Initializer(msg.sender);
+        }
     }
 
     //////////////////////////////////////////////////////////////
@@ -852,7 +889,14 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
     // @notice Publically allow anyone to recalculate the total nodes and
     // aggregate public key in the smart contract
     function rederiveTotalNodesAndAggregatePubkey() public {
+        _checkpointRewardPool();
+        _rederiveTotalsAndAggregatePubkey();
+        emit TotalActiveStakeRederived(totalActiveStake);
+    }
+
+    function _rederiveTotalsAndAggregatePubkey() internal {
         totalNodes = 0;
+        totalActiveStake = 0;
         uint64 currentNode = _serviceNodes[LIST_SENTINEL].next;
         while (currentNode != LIST_SENTINEL) {
             ServiceNode storage sn = _serviceNodes[currentNode];
@@ -861,6 +905,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
             } else {
                 _aggregatePubkey = BLS12381.g1Add(_aggregatePubkey, sn.blsPubkey);
             }
+            totalActiveStake += sn.deposit;
             currentNode = sn.next;
             unchecked { totalNodes += 1; }
         }
@@ -895,6 +940,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
     function setStakingRequirement(uint256 newRequirement) public onlyOwner {
         if (newRequirement <= 0)
             revert PositiveNumberRequirement();
+        _checkpointRewardPool();
         stakingRequirement = newRequirement;
         emit StakingRequirementUpdated(newRequirement);
     }
