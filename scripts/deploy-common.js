@@ -6,6 +6,7 @@
 // global scope, and execute the script.
 const hre = require("hardhat");
 const chalk = require('chalk')
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { patchRpcEmptyTo } = require("./normalize-rpc-empty-to.js");
@@ -218,23 +219,41 @@ async function deployContracts(args = {}, verify = true) {
         .map((tx) => tx?.blockNumber)
         .filter((blockNumber) => Number.isInteger(blockNumber));
 
+    const chainId = Number((await hre.ethers.provider.getNetwork()).chainId);
+    if (!Number.isSafeInteger(chainId) || chainId <= 0) {
+        throw new Error(`Unsupported deployment chain id: ${chainId}`);
+    }
+    const contracts = {
+        token: await tokenContract.getAddress(),
+        serviceNodeRewards: await serviceNodeRewards.getAddress(),
+        rewardRatePool: await rewardRatePool.getAddress(),
+        serviceNodeContributionFactory: await snContributionFactory.getAddress(),
+        serviceNodeContributionImplementation: await snContributionImplementation.getAddress(),
+    };
+    const lifecycleId = crypto
+        .createHash("sha256")
+        .update(JSON.stringify({
+            chainId,
+            network: networkName,
+            contracts,
+            deploymentTransactions,
+        }))
+        .digest("hex");
+
     const deployment = {
+        schemaVersion: 1,
         network: networkName,
+        chainId,
+        lifecycleId,
         token: {
             name: TOKEN_NAME,
             symbol: TOKEN_SYMBOL,
             decimals: 9,
-            address: await tokenContract.getAddress(),
+            address: contracts.token,
         },
         startBlock: deploymentBlocks.length > 0 ? Math.min(...deploymentBlocks) : null,
         deploymentTransactions,
-        contracts: {
-            token: await tokenContract.getAddress(),
-            serviceNodeRewards: await serviceNodeRewards.getAddress(),
-            rewardRatePool: await rewardRatePool.getAddress(),
-            serviceNodeContributionFactory: await snContributionFactory.getAddress(),
-            serviceNodeContributionImplementation: await snContributionImplementation.getAddress(),
-        },
+        contracts,
         parameters: {
             supply: SUPPLY.toString(),
             poolInitial: POOL_INITIAL.toString(),
@@ -267,6 +286,7 @@ async function getDeploymentTransaction(contract) {
 
     return {
         hash: receipt.hash,
+        blockHash: receipt.blockHash,
         blockNumber: receipt.blockNumber,
         contractAddress: receipt.contractAddress,
     };
@@ -277,7 +297,23 @@ function writeDeployment(networkName, deployment) {
     fs.mkdirSync(dir, { recursive: true });
 
     const latestPath = path.join(dir, `${networkName}.latest.json`);
-    fs.writeFileSync(latestPath, JSON.stringify(deployment, null, 2) + "\n");
+    const temporaryPath = `${latestPath}.tmp-${process.pid}-${crypto.randomBytes(8).toString("hex")}`;
+    let temporaryFile;
+    try {
+        temporaryFile = fs.openSync(temporaryPath, "wx", 0o600);
+        fs.writeFileSync(temporaryFile, JSON.stringify(deployment, null, 2) + "\n", "utf8");
+        fs.fsyncSync(temporaryFile);
+        fs.closeSync(temporaryFile);
+        temporaryFile = undefined;
+        fs.renameSync(temporaryPath, latestPath);
+    } finally {
+        if (temporaryFile !== undefined) {
+            fs.closeSync(temporaryFile);
+        }
+        if (fs.existsSync(temporaryPath)) {
+            fs.unlinkSync(temporaryPath);
+        }
+    }
     console.log("  ", chalk.cyan("Deployment manifest"), "written to:", chalk.greenBright(latestPath));
 }
 

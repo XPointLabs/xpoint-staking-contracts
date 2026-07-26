@@ -10,6 +10,30 @@ async function main() {
 
   const deployment = JSON.parse(fs.readFileSync(deploymentPath, "utf8"));
   const [owner] = await hre.ethers.getSigners();
+  const chainId = Number((await hre.ethers.provider.getNetwork()).chainId);
+
+  await assertEqual(deployment.schemaVersion, 1, "deployment schema version");
+  await assertEqual(deployment.chainId, chainId, "deployment chain id");
+  await assertEqual(deployment.network, hre.network.name, "deployment network");
+  if (!/^[0-9a-f]{64}$/.test(deployment.lifecycleId ?? "")) {
+    throw new Error("deployment lifecycle id is missing or invalid");
+  }
+
+  for (const [name, transaction] of Object.entries(deployment.deploymentTransactions ?? {})) {
+    if (!transaction?.hash || !transaction?.blockHash || !transaction?.contractAddress) {
+      throw new Error(`${name} deployment transaction identity is incomplete`);
+    }
+    const receipt = await hre.ethers.provider.getTransactionReceipt(transaction.hash);
+    if (!receipt) {
+      throw new Error(`${name} deployment receipt is unavailable`);
+    }
+    await assertEqual(receipt.blockHash, transaction.blockHash, `${name} deployment block hash`);
+    await assertEqual(receipt.contractAddress, transaction.contractAddress, `${name} deployment contract address`);
+    const code = await hre.ethers.provider.getCode(transaction.contractAddress);
+    if (code === "0x") {
+      throw new Error(`${name} deployment contract has no bytecode`);
+    }
+  }
 
   const token = await hre.ethers.getContractAt("XPNT", deployment.contracts.token);
   const rewards = await hre.ethers.getContractAt("ServiceNodeRewards", deployment.contracts.serviceNodeRewards);

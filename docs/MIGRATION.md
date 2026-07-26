@@ -94,8 +94,14 @@ Use the deployed addresses in `xpoint-staking-backend`:
 }
 ```
 
-`deploy-local-devnet` writes `deployments/localhost.latest.json`. Copy the
-addresses from that file into backend configuration for local integration.
+`deploy-local-devnet` atomically writes `deployments/localhost.latest.json`.
+Schema version 1 records the chain ID, a lifecycle fingerprint, each deployment
+transaction and block hash, contract addresses, and staking parameters. The
+staking backend can mount this file read-only through
+`Contracts__DeploymentManifestPath`; it must also pin the expected network with
+`Contracts__ExpectedDeploymentNetwork`. This is preferred for local integration
+because the manifest becomes the authoritative source and stale in-memory
+Hardhat generations fail closed.
 
 The same values can be supplied as environment variables:
 
