@@ -300,7 +300,10 @@ function writeDeployment(networkName, deployment) {
     const temporaryPath = `${latestPath}.tmp-${process.pid}-${crypto.randomBytes(8).toString("hex")}`;
     let temporaryFile;
     try {
-        temporaryFile = fs.openSync(temporaryPath, "wx", 0o600);
+        // Deployment manifests contain public addresses and transaction
+        // identities, never signer material. Keep them readable by the
+        // unprivileged staking runtime that mounts this volume read-only.
+        temporaryFile = fs.openSync(temporaryPath, "wx", 0o644);
         fs.writeFileSync(temporaryFile, JSON.stringify(deployment, null, 2) + "\n", "utf8");
         fs.fsyncSync(temporaryFile);
         fs.closeSync(temporaryFile);
