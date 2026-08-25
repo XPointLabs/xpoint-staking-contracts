@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "xpoint-staking-contracts",
   "version": "1.0.0",
   "description": "Deep XPoint staking contracts preserving Session reward distribution semantics",
