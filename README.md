@@ -8,7 +8,6 @@ token:
 ## Agent Specs
 
 - Start with [`AGENTS.md`](AGENTS.md) before changing contracts, deployment scripts, token economics, or tests.
-- Use [`docs/SESSION_PORTING.md`](docs/SESSION_PORTING.md) for Session staking/reward migration rules.
 - `AGENT_NODE_X64.md` remains the host/runtime note for Node x64-specific agent setup.
 
 - Token name: XPoint

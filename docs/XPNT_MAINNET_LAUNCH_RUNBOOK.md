@@ -125,7 +125,8 @@ the staking deployment completed.
 
 ## Deployment and Verification Record
 
-- L1 deploy tx / canonical token deployment: see [MIGRATION.md](./MIGRATION.md)
+- Canonical L1 XPNT deployment: Ethereum mainnet,
+  `0xc890b3Dac12a78B3449219a988f69CC25683575f`, recorded 2026-05-30.
 - L2 implementation tx: `0x8726d5567e4bebc251f88e47a0937ccdac47893c51adcc7f64916b62acb156ce`
 - L2 proxy tx: `0xd1b4c0a9c641acd9d61f1f06616fdbc60478519f701d671697a7835eafe460cb`
 - L1 to L2 registration tx: `0x12158351174e4b9833a98d322b030c03f06971c8810b306e40631dc44d9ff80a`
