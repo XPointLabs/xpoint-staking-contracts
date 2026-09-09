@@ -65,9 +65,12 @@ jobs:
       - name: Compile
         run: cmake --build ./test/cpp/build --parallel --verbose
 
-      - name: Run C++ tests
+      - name: Run current C++ runtime tests
         working-directory: ./test/cpp/build
-        run: ctest -VV --repeat until-pass:2 --test-dir .
+        # rewards_contract is still compiled above, but its runtime cases bind
+        # the retired pre-clean-break contributor ABI. The current equivalents
+        # run in the Hardhat "CPP port: rewards_contract.cpp" suite.
+        run: ctest -VV --repeat until-pass:2 --test-dir . -E '^rewards_contract$'
 
       - name: Kill pnpm node
         run: kill $NODE_PID
