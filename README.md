@@ -84,6 +84,12 @@ pnpm deploy-local-devnet       # Deploy XPNT staking contracts to a local node
 pnpm devnet-smoke              # Verify XPNT metadata, reward constants, and seeded node state
 ```
 
+The reviewed lockfile pins `adm-zip` to 0.6.1 through a transitive override for
+Hardhat's archive tooling, addressing
+[GHSA-7q85-xj36-vmfc](https://github.com/advisories/GHSA-7q85-xj36-vmfc).
+Use `pnpm audit --audit-level high` when refreshing dependencies. This tooling
+update changes no contract source or compiler settings and performs no deployment.
+
 ### C++
 
 Integration tests require running a devnet first with the deployed smart
