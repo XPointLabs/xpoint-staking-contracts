@@ -3,6 +3,16 @@
 This document is the operator checklist for taking XPNT from deployed-and-verified
 status to public production use on Ethereum mainnet and Arbitrum One.
 
+## Toolchain security prerequisite
+
+Use the committed pnpm lockfile with `pnpm install --frozen-lockfile` before
+build/test/export. The `fast-uri` 3.x override is pinned to 3.1.7 to close
+[authority injection](https://github.com/fastify/fast-uri/security/advisories/GHSA-qw65-cvwx-89v3)
+and [host confusion](https://github.com/fastify/fast-uri/security/advisories/GHSA-58mr-gqgx-xq4g).
+This tooling-only update changes neither Solidity contracts nor deployment
+manifests and does not authorize a chain transaction. Keep the release
+dependency audit enabled; a successful build is not its substitute.
+
 ## Status Snapshot
 
 As of 2026-06-22, the following items are already complete:
